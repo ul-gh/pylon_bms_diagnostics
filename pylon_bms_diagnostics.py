@@ -11,17 +11,16 @@ If the --poll option is given, this emulates a connected inverter and
 periodically sends out a request frame to trigger the BMS reply.
 
 
-Version 0.1  2025-01-20  Ulrich Lukas
+Version 0.1.1  2025-01-21  Ulrich Lukas
 """
 import argparse
 import logging
 import time
 import threading
-import can
 import json
+import can
 import paho.mqtt.client as mqtt
 from dataclasses import dataclass, asdict
-
 from pipyadc.utils import TextScreen
 
 PROGNAME = "pylon_bms_diagnostics.py"
@@ -36,14 +35,11 @@ N_BMS_REPLY_FRAMES: int = 6
 # CAN ID which marks the inverter request, followed by BMS reply
 ID_INVERTER_REQUEST: int = 0x305
 
-logger = logging.Logger(PROGNAME)
-logging.basicConfig(level=logging.WARNING)
-
 parser = argparse.ArgumentParser(prog=PROGNAME, description=__doc__)
 parser.add_argument("--poll", type=float, nargs="?", const=1.0,
-                    help="Send out request frame every n seconds")
+                    help="Send request frame every n seconds. Default: 1")
 parser.add_argument("ifname", type=str, nargs="?", default=CAN_DEVICE_DEFAULT,
-                    help="CAN interface to use")
+                    help="CAN interface to use. Default: vcan0")
 parser.add_argument("--push", action="store_true", 
                     help="Push incoming BMS telegrams to MQTT")
 parser.add_argument("-t", "--topic", type=str, default=MQTT_TOPIC_DEFAULT,
@@ -52,8 +48,13 @@ parser.add_argument("-b", "--broker", type=str, default=MQTT_BROKER_DEFAULT,
                     help="MQTT host (broker) to push to")
 parser.add_argument("-s", "--silent", action="store_true",
                     help="Suppress screen text output")
+parser.add_argument("-ss", "--super-silent", action="store_true",
+                    help="Suppress text output. Also suppress warnings")
 
 args = parser.parse_args()
+
+logger = logging.Logger(PROGNAME)
+logging.basicConfig(level=logging.ERROR if args.super_silent else logging.WARNING)
 
 # Double-Buffered Text Output
 screen = TextScreen()
@@ -142,10 +143,6 @@ def do_text_output():
 
 
 def bms_decode(frames):
-    # Operator "<=" tests if left set is a subset of the set on the rigth side
-    if not {0x351, 0x355, 0x356, 0x359, 0x35C, 0x35E} <= frames.keys():
-        logger.warning("Incomplete set of data frames received")
-        return
     try:
         # CAN ID 0x351
         state.v_charge_cmd = 0.1 * int.from_bytes(frames[0x351][0:2], "little")
@@ -159,8 +156,8 @@ def bms_decode(frames):
         state.i_total = 0.1 * int.from_bytes(frames[0x356][2:4], "little", signed=True)
         state.t_avg = 0.1 * int.from_bytes(frames[0x356][4:6], "little", signed=True)
         # CAN ID 0x359
-        state.error_state = bool(frames[0x359][0]) or bool(frames[0x359][1])
-        state.warning_state = bool(frames[0x359][2]) or bool(frames[0x359][3])
+        state.error_state = bool(frames[0x359][0] or frames[0x359][1])
+        state.warning_state = bool(frames[0x359][2] or frames[0x359][3])
         state.n_modules = frames[0x359][4]
         # CAN ID 0x35C
         state.charge_enable = bool(frames[0x35C][0] & 1<<7)
@@ -170,13 +167,20 @@ def bms_decode(frames):
         state.balancing_charge_request = bool(frames[0x35C][0] & 1<<3)
         # CAN ID 0x35E
         state.manufacturer: str = frames[0x35E].decode().rstrip("\x00")
+    # Operator "<=" tests if left set is a subset of the set on the rigth side
+    #if not {0x351, 0x355, 0x356, 0x359, 0x35C, 0x35E} <= frames.keys():
+    except KeyError as e:
+        logger.warning("Incomplete set of data frames received. Details: {e.args[0]}")
+        return
     except (IndexError, ValueError, UnicodeDecodeError) as e:
         logger.warning(f"Invalid data received. Details: {e.args[0]}")
         return
     state.timestamp_last_updated = time.time()
     if args.push:
+        # Faster but does not behave as dataclass is intended to behave
+        # mqttc.publish(args.topic, json.dumps(vars(state)))
         mqttc.publish(args.topic, json.dumps(asdict(state)))
-    if not args.silent:
+    if not (args.silent or args.super_silent):
         do_text_output()
 
 

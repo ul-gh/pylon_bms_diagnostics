@@ -8,21 +8,27 @@ When the --poll command line option is given, the tool can be used stand-alone w
 
 When the --push option is given, the BMS state is continuously pushed to an MQTT broker.
 
+## Install Requirements:
 ```
-usage: pylon_bms_diagnostics.py [-h] [--poll [POLL]] [--push] [-t TOPIC] [-b BROKER] [-s] [ifname]
+pip install python-can paho-mqtt pipyadc
+```
+
+```
+usage: pylon_bms_diagnostics.py [-h] [--poll [POLL]] [--push] [-t TOPIC] [-b BROKER] [-s] [-ss] [ifname]
 
 positional arguments:
-  ifname                CAN interface to use
+  ifname                CAN interface to use. Default: vcan0
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
-  --poll [POLL]         Send out request frame every n seconds
+  --poll [POLL]         Send request frame every n seconds. Default: 1
   --push                Push incoming BMS telegrams to MQTT
   -t TOPIC, --topic TOPIC
                         MQTT topic to push to
   -b BROKER, --broker BROKER
                         MQTT host (broker) to push to
   -s, --silent          Suppress screen text output
+  -ss, --super-silent   Suppress text output. Also suppress warnings
 ```
 
 Example output:
