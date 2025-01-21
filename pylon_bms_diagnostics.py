@@ -54,7 +54,7 @@ parser.add_argument("-ss", "--super-silent", action="store_true",
 args = parser.parse_args()
 
 logger = logging.Logger(PROGNAME)
-logging.basicConfig(level=logging.ERROR if args.super_silent else logging.WARNING)
+logger.setLevel(logging.ERROR if args.super_silent else logging.WARNING)
 
 # Double-Buffered Text Output
 screen = TextScreen()
