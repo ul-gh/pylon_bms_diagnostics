@@ -43,9 +43,9 @@ parser.add_argument("ifname", type=str, nargs="?", default=CAN_DEVICE_DEFAULT,
 parser.add_argument("--push", action="store_true", 
                     help="Push incoming BMS telegrams to MQTT")
 parser.add_argument("-t", "--topic", type=str, default=MQTT_TOPIC_DEFAULT,
-                    help="MQTT topic to push to")
+                    help="MQTT topic to push to. Default: tele/bms")
 parser.add_argument("-b", "--broker", type=str, default=MQTT_BROKER_DEFAULT,
-                    help="MQTT host (broker) to push to")
+                    help="MQTT host (broker) to push to. Default: localhost")
 parser.add_argument("-s", "--silent", action="store_true",
                     help="Suppress screen text output")
 parser.add_argument("-ss", "--super-silent", action="store_true",
