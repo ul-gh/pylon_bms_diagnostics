@@ -14,7 +14,8 @@ pip install python-can paho-mqtt pipyadc
 ```
 
 ```
-usage: pylon_bms_diagnostics.py [-h] [--poll [POLL]] [--push] [-t TOPIC] [-b BROKER] [-s] [-ss] [ifname]
+usage: pylon_bms_diagnostics.py [-h] [--poll [POLL]] [--push] [-t TOPIC]
+                                [-b BROKER] [-s] [-ss] [ifname]
 
 positional arguments:
   ifname                CAN interface to use. Default: vcan0
@@ -24,9 +25,9 @@ options:
   --poll [POLL]         Send request frame every n seconds. Default: 1
   --push                Push incoming BMS telegrams to MQTT
   -t TOPIC, --topic TOPIC
-                        MQTT topic to push to
+                        MQTT topic to push to. Default: tele/bms
   -b BROKER, --broker BROKER
-                        MQTT host (broker) to push to
+                        MQTT host (broker) to push to. Default: localhost
   -s, --silent          Suppress screen text output
   -ss, --super-silent   Suppress text output. Also suppress warnings
 ```
