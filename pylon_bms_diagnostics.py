@@ -167,10 +167,10 @@ def bms_decode(frames):
         state.balancing_charge_request = bool(frames[0x35C][0] & 1<<3)
         # CAN ID 0x35E
         state.manufacturer: str = frames[0x35E].decode().rstrip("\x00")
-    # Operator "<=" tests if left set is a subset of the set on the rigth side
+    # Operator "<=" tests if left set is a subset of the set on the right side
     #if not {0x351, 0x355, 0x356, 0x359, 0x35C, 0x35E} <= frames.keys():
     except KeyError as e:
-        logger.warning("Incomplete set of data frames received. Details: {e.args[0]}")
+        logger.warning(f"Incomplete set of data frames received. Details: {e.args[0]}")
         return
     except (IndexError, ValueError, UnicodeDecodeError) as e:
         logger.warning(f"Invalid data received. Details: {e.args[0]}")
