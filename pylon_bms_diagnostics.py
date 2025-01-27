@@ -11,7 +11,7 @@ If the --poll option is given, this emulates a connected inverter and
 periodically sends out a request frame to trigger the BMS reply.
 
 
-Version 0.1.1  2025-01-21  Ulrich Lukas
+Version 0.1.2  2025-01-27  Ulrich Lukas
 """
 import argparse
 import logging
@@ -23,7 +23,7 @@ import paho.mqtt.client as mqtt
 from dataclasses import dataclass, asdict
 from pipyadc.utils import TextScreen
 
-PROGNAME = "pylon_bms_diagnostics.py"
+PROGNAME: str = "pylon_bms_diagnostics.py"
 
 CAN_DEVICE_DEFAULT: str = "vcan0"
 MQTT_TOPIC_DEFAULT: str = "tele/bms"
@@ -32,7 +32,9 @@ MQTT_PORT: int = 1883
 
 # Number of CAN frames belonging to one reply data telegram from the BMS
 N_BMS_REPLY_FRAMES: int = 6
-# CAN ID which marks the inverter request, followed by BMS reply
+# CAN ID which marks the start of the data telegram sent from the BMS
+ID_BMS_TELEGRAM_START: int = 0x359
+# CAN ID which is sent by the inverter to poll the BMS (using 8x 0x00 data)
 ID_INVERTER_REQUEST: int = 0x305
 
 parser = argparse.ArgumentParser(prog=PROGNAME, description=__doc__)
@@ -63,7 +65,8 @@ screen = TextScreen()
 @dataclass
 class BmsState:
     """This represents the BMS state as received on the CAN bus"""
-    timestamp_last_updated: float = 0.0
+    timestamp_last_bms_update: float = 0.0
+    timestamp_last_inverter_request: float = 0.0
     n_invalid_data_telegrams: int = 0
     manufacturer: str = ""
     soc: int = 0
@@ -86,7 +89,7 @@ class BmsState:
 # Object holding the received BMS state
 state = BmsState()
 
-# Periodically sends inverter request frames to the BMS
+# Periodically sends inverter request/reply frames to the BMS
 def fn_thread_poll_bms(interval):
     next_call = time.time()
     while not threads_stop.is_set():
@@ -107,7 +110,7 @@ if args.push:
     mqttc.loop_start()
 
 
-evenrun = False
+evenrun: bool = False
 def do_text_output():
     global evenrun
     screen.put(f"""\n\n\n\n\n
@@ -170,12 +173,14 @@ def bms_decode(frames):
     # Operator "<=" tests if left set is a subset of the set on the right side
     #if not {0x351, 0x355, 0x356, 0x359, 0x35C, 0x35E} <= frames.keys():
     except KeyError as e:
-        logger.warning(f"Incomplete set of data frames received. Details: {e.args[0]}")
+        logger.warning(f"Incomplete set of data frames received. ID: {hex(e.args[0])}")
+        state.n_invalid_data_telegrams += 1
         return
     except (IndexError, ValueError, UnicodeDecodeError) as e:
         logger.warning(f"Invalid data received. Details: {e.args[0]}")
+        state.n_invalid_data_telegrams += 1
         return
-    state.timestamp_last_updated = time.time()
+    state.timestamp_last_bms_update = time.time()
     if args.push:
         # Faster but does not behave as dataclass is intended to behave
         # mqttc.publish(args.topic, json.dumps(vars(state)))
@@ -185,32 +190,22 @@ def bms_decode(frames):
 
 
 def receive_data_loop():
-    bms_reply_frames = {}
+    bms_reply_frames: dict = {}
+    framecounter: int = 0
     with can.Bus(args.ifname, "socketcan") as bus:
-        # BMS reply frames start after Inverter request.
-        # Inverter request is marked by can ID 0x305 and empty data (8 * 0x00).
-        #
-        # This loop discards any frames before the first inverter request as
-        # this could be incomplete data
-        for frame in bus:
-            if frame.arbitration_id == ID_INVERTER_REQUEST:
-                break
         # This is an endless loop reading the CAN bus.
-        framecounter = 0
         for frame in bus:
+            # Fill in BMS reply frames into dictionary
+            bms_reply_frames[frame.arbitration_id] = frame.data
+            # Inverter request or acknowledge is inverleaved with BMS reply.
+            # The inverter frame contains no data and only timestamp is logged
             if frame.arbitration_id == ID_INVERTER_REQUEST:
+                state.timestamp_last_inverter_request = time.time()
+            elif frame.arbitration_id == ID_BMS_TELEGRAM_START:
                 if framecounter >= N_BMS_REPLY_FRAMES:
                     bms_decode(bms_reply_frames)
-                if framecounter != N_BMS_REPLY_FRAMES:
-                    state.n_invalid_data_telegrams += 1
-                    logger.warning(
-                        "Inconsistent number of data frames! Expected: "
-                        f"{N_BMS_REPLY_FRAMES}  Received: {framecounter}"
-                        )
-                framecounter = 0
+                framecounter = 1
             else:
-                # Fill in BMS reply frames into dictionary
-                bms_reply_frames[frame.arbitration_id] = frame.data
                 framecounter += 1
 
 
